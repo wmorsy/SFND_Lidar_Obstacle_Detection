@@ -49,8 +49,8 @@ public:
 
     void RansacPlane(pcl::PointIndices &inliersResult, const typename pcl::PointCloud<PointT>::Ptr cloud, int maxIterations, float distanceTol);
 
-    void clusterHelper(const int index, const std::vector<std::vector<float>> &points, pcl::PointIndices &cluster, std::vector<bool> &processed, const KdTree *tree, const float distanceTol);
+    void clusterHelper(const int index, const std::vector<std::vector<float>> &points, pcl::PointIndices &cluster, std::vector<bool> &processed, const KdTree *tree, const float distanceTol, int minSize, int maxSize);
 
-    void euclideanCluster(const std::vector<std::vector<float>> &points, const KdTree *tree, const float distanceTol, std::vector<pcl::PointIndices> &clusters);
+    std::vector<pcl::PointIndices> euclideanCluster(const std::vector<std::vector<float>> &points, const KdTree *tree, const float distanceTol, int minSize, int maxSize);
 };
 #endif /* PROCESSPOINTCLOUDS_H_ */
