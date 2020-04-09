@@ -166,7 +166,7 @@ template<typename PointT>
 void ProcessPointClouds<PointT>::clusterHelper(const int index,
                    const std::vector<std::vector<float>> &points,
                    pcl::PointIndices& cluster, std::vector<bool> &processed,
-                   const KdTree *tree, const float distanceTol) 
+                   const KdTree *tree, const float distanceTol, int minSize, int maxSize) 
 {
     processed[index] = true;
     cluster.indices.push_back(index);
@@ -174,17 +174,23 @@ void ProcessPointClouds<PointT>::clusterHelper(const int index,
     std::vector<int> nearest = tree->search(points[index], distanceTol);
 
     for (int id : nearest) {
-        if(!processed[id])
-            clusterHelper(id, points, cluster, processed, tree, distanceTol);
+      if (!processed[id])
+        clusterHelper(id, points, cluster, processed, tree, distanceTol, minSize, maxSize);
+      if (cluster.indices.size() > maxSize) {
+        break;
+      }
     }
+
+    std::sort(cluster.indices.begin(), cluster.indices.end());
 }
 
 template <typename PointT>
-void ProcessPointClouds<PointT>::euclideanCluster(
+std::vector<pcl::PointIndices> ProcessPointClouds<PointT>::euclideanCluster(
     const std::vector<std::vector<float>> &points, const KdTree *tree,
-    const float distanceTol, std::vector<pcl::PointIndices> &clusters) 
+    const float distanceTol, int minSize, int maxSize) 
     {
         // DONE: Fill out this function to return list of indices for each cluster
+        std::vector<pcl::PointIndices> clusters{};
         std::vector<bool> processed(points.size(), false);
 
         for (int i = 0; i < points.size(); i++) {
@@ -193,9 +199,19 @@ void ProcessPointClouds<PointT>::euclideanCluster(
           }
 
           pcl::PointIndices cluster;
-          clusterHelper(i, points, cluster, processed, tree, distanceTol);
-          clusters.push_back(cluster);
+          
+          clusterHelper(i, points, cluster, processed, tree, distanceTol, minSize, maxSize);
+
+          if(cluster.indices.size() >= minSize)
+            clusters.push_back(cluster);
         }
+
+        std::sort(clusters.begin(), clusters.end(),
+                  [](const pcl::PointIndices &a, const pcl::PointIndices &b) {
+                    return a.indices.size() > b.indices.size();
+                  });
+
+        return clusters;
 }
 
 template<typename PointT>
@@ -213,26 +229,32 @@ std::vector<typename pcl::PointCloud<PointT>::Ptr> ProcessPointClouds<PointT>::C
     // Use Custom Clustering
     if(!usePclClustering) {
         clusteringType = "Custom";
-        KdTree* tree = new KdTree;
+        KdTree* tree = new KdTree();
         std::vector<std::vector<float>> pointsVector;
 
-        for(auto point = cloud->begin(); point != cloud->end(); ++point)
+        for(int index = 0; index < cloud->points.size(); ++index)
         {
-            const auto index = std::distance(cloud->begin(), point);
-            std::vector<float> pointVector(3,0.0);
-            typename pcl::DefaultPointRepresentation<PointT> converter;
-            converter.copyToFloatArray(*point, &pointVector[0]);
-            tree->insert(pointVector, index);
-            pointsVector.push_back(pointVector);
+            const auto &point = cloud->points[index];
+            tree->insert({point.x, point.y, point.z}, index);
+            pointsVector.push_back({point.x, point.y, point.z});
         }
 
-        euclideanCluster(pointsVector, tree, clusterTolerance, clusterIndices);
+        // euclideanCluster(pointsVector, tree, clusterTolerance, clusterIndices);
+        clusterIndices = euclideanCluster(pointsVector, tree, clusterTolerance, minSize, maxSize);
+
+        delete tree;
+
+        // Test code
+        // cout << "Custom clusters: " << std::endl;
+        // for_each(clusterIndices.begin(), clusterIndices.end(),
+        //          [&](pcl::PointIndices &cluster) { cout << cluster; });
     }
     // Use PCL Clustering
-    else {
+    else{
         clusteringType = "PCL";
         // Creating the KdTree object for the search method of the extraction
-        typename pcl::search::KdTree<PointT>::Ptr tree(new pcl::search::KdTree<PointT>);
+        typename pcl::search::KdTree<PointT>::Ptr tree(
+            new pcl::search::KdTree<PointT>);
         tree->setInputCloud(cloud);
         pcl::EuclideanClusterExtraction<PointT> ec;
         ec.setClusterTolerance(clusterTolerance);
@@ -241,6 +263,11 @@ std::vector<typename pcl::PointCloud<PointT>::Ptr> ProcessPointClouds<PointT>::C
         ec.setSearchMethod(tree);
         ec.setInputCloud(cloud);
         ec.extract(clusterIndices);
+
+        // Test code
+        // cout << "PCL clusters: " << std::endl;
+        // for_each(clusterIndices.begin(), clusterIndices.end(),
+        //         [&](pcl::PointIndices cluster) { cout << cluster; });
     }
 
     // Create new point clouds initialized as a subset of the input cloud of the given cluster indices
