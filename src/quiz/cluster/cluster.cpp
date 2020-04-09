@@ -12,13 +12,15 @@
 // increase zoom to see more of the area
 pcl::visualization::PCLVisualizer::Ptr initScene(Box window, int zoom)
 {
-	pcl::visualization::PCLVisualizer::Ptr viewer(new pcl::visualization::PCLVisualizer ("2D Viewer"));
+	pcl::visualization::PCLVisualizer::Ptr viewer(new pcl::visualization::PCLVisualizer ("3D Viewer"));
 	viewer->setBackgroundColor (0, 0, 0);
   	viewer->initCameraParameters();
   	viewer->setCameraPosition(0, 0, zoom, 0, 1, 0);
   	viewer->addCoordinateSystem (1.0);
 
-  	viewer->addCube(window.x_min, window.x_max, window.y_min, window.y_max, 0, 0, 1, 1, 1, "window");
+  	viewer->addCube(window.x_min, window.x_max, window.y_min, window.y_max, window.z_min, window.z_max, 1, 1, 1, "window");
+    viewer->setShapeRenderingProperties(pcl::visualization::PCL_VISUALIZER_OPACITY, 0.1, "window");
+
   	return viewer;
 }
 
@@ -31,7 +33,7 @@ pcl::PointCloud<pcl::PointXYZ>::Ptr CreateData(std::vector<std::vector<float>> p
   		pcl::PointXYZ point;
   		point.x = points[i][0];
   		point.y = points[i][1];
-  		point.z = 0;
+  		point.z = points[i][2];
 
   		cloud->points.push_back(point);
 
@@ -73,6 +75,80 @@ void render2DTree(Node* node, pcl::visualization::PCLVisualizer::Ptr& viewer, Bo
 
 	}
 
+}
+
+void render3DTree(Node* node, pcl::visualization::PCLVisualizer::Ptr& viewer, Box window, int& iteration, uint depth=0)
+{
+	if(node!=NULL)
+	{
+		Box upperWindow = window;
+		Box lowerWindow = window;
+		// split on x axis
+		if(depth%3==0)
+		{
+            std::vector<std::vector<float>> plane{
+                {node->point[0], window.y_min, window.z_min},
+                {node->point[0], window.y_max, window.z_min},
+                {node->point[0], window.y_max, window.z_max},
+                {node->point[0], window.y_min, window.z_max}};
+            pcl::PointCloud<pcl::PointXYZ>::Ptr planeCloud = CreateData(plane);
+
+            viewer->addPolygon<pcl::PointXYZ>(planeCloud,0,0,1,"line"+std::to_string(iteration));
+            viewer->setShapeRenderingProperties(pcl::visualization::PCL_VISUALIZER_OPACITY, 0.15, "line"+std::to_string(iteration));
+            viewer->setShapeRenderingProperties(pcl::visualization::PCL_VISUALIZER_REPRESENTATION, pcl::visualization::PCL_VISUALIZER_REPRESENTATION_SURFACE, "line"+std::to_string(iteration)); 
+			lowerWindow.x_max = node->point[0];
+			upperWindow.x_min = node->point[0];
+
+            // Test code
+            // planeCloud->push_back(pcl::PointXYZ(node->point[0], node->point[1], node->point[2]));
+            // renderPointCloud(viewer,planeCloud,"data"+std::to_string(iteration));
+		}
+		// split on y axis
+		else if(depth%3==1)
+		{
+            std::vector<std::vector<float>> plane{
+                {window.x_min, node->point[1], window.z_min},
+                {window.x_max, node->point[1], window.z_min},
+                {window.x_max, node->point[1], window.z_max},
+                {window.x_min, node->point[1], window.z_max}};
+            pcl::PointCloud<pcl::PointXYZ>::Ptr planeCloud = CreateData(plane);
+
+			viewer->addPolygon<pcl::PointXYZ>(planeCloud,1,0,0,"line"+std::to_string(iteration));
+            viewer->setShapeRenderingProperties(pcl::visualization::PCL_VISUALIZER_OPACITY, 0.15, "line"+std::to_string(iteration));
+            viewer->setShapeRenderingProperties(pcl::visualization::PCL_VISUALIZER_REPRESENTATION, pcl::visualization::PCL_VISUALIZER_REPRESENTATION_SURFACE, "line"+std::to_string(iteration)); 
+			lowerWindow.y_max = node->point[1];
+			upperWindow.y_min = node->point[1];
+
+            // Test code
+            // planeCloud->push_back(pcl::PointXYZ(node->point[0], node->point[1], node->point[2]));
+            // renderPointCloud(viewer,planeCloud,"data"+std::to_string(iteration));
+ 		}
+        // split on z axis
+        else
+        {
+            std::vector<std::vector<float>> plane{
+                {window.x_min, window.y_min, node->point[2]},
+                {window.x_max, window.y_min, node->point[2]},
+                {window.x_max, window.y_max, node->point[2]},
+                {window.x_min, window.y_max, node->point[2]}};
+            pcl::PointCloud<pcl::PointXYZ>::Ptr planeCloud = CreateData(plane);
+            
+			viewer->addPolygon<pcl::PointXYZ>(planeCloud,0,1,0,"line"+std::to_string(iteration));
+            viewer->setShapeRenderingProperties(pcl::visualization::PCL_VISUALIZER_OPACITY, 0.15, "line"+std::to_string(iteration));
+            viewer->setShapeRenderingProperties(pcl::visualization::PCL_VISUALIZER_REPRESENTATION, pcl::visualization::PCL_VISUALIZER_REPRESENTATION_SURFACE, "line"+std::to_string(iteration)); 
+			lowerWindow.z_max = node->point[2];
+			upperWindow.z_min = node->point[2];
+
+            // Test code
+            // planeCloud->push_back(pcl::PointXYZ(node->point[0], node->point[1], node->point[2]));
+            // renderPointCloud(viewer,planeCloud,"data"+std::to_string(iteration));
+        }
+
+		iteration++;
+
+		render3DTree(node->left,viewer, lowerWindow, iteration, depth+1);
+		render3DTree(node->right,viewer, upperWindow, iteration, depth+1);
+	}
 }
 
 void clusterHelper(const int index,
@@ -121,12 +197,13 @@ int main ()
   	window.x_max =  10;
   	window.y_min = -10;
   	window.y_max =  10;
-  	window.z_min =   0;
-  	window.z_max =   0;
+  	window.z_min = -10;
+  	window.z_max =  10;
 	pcl::visualization::PCLVisualizer::Ptr viewer = initScene(window, 25);
 
 	// Create data
-	std::vector<std::vector<float>> points = { {-6.2,7}, {-6.3,8.4}, {-5.2,7.1}, {-5.7,6.3}, {7.2,6.1}, {8.0,5.3}, {7.2,7.1}, {0.2,-7.1}, {1.7,-6.9}, {-1.2,-7.2}, {2.2,-8.9} };
+	// std::vector<std::vector<float>> points = { {-6.2,7}, {-6.3,8.4}, {-5.2,7.1}, {-5.7,6.3}, {7.2,6.1}, {8.0,5.3}, {7.2,7.1}, {0.2,-7.1}, {1.7,-6.9}, {-1.2,-7.2}, {2.2,-8.9} }; // 2D test points
+	std::vector<std::vector<float>> points = { {-6.2,7,3.5}, {-6.3,8.4,4.3}, {-5.2,7.1,3.8}, {-5.7,6.3,4.5}, {7.2,6.1,1}, {8.0,5.3,1.5}, {7.2,7.1,0.5}, {0.2,-7.1,-3}, {1.7,-6.9,-2.5}, {-1.2,-7.2,-3.3}, {2.2,-8.9,-2.9} };
 	//std::vector<std::vector<float>> points = { {-6.2,7}, {-6.3,8.4}, {-5.2,7.1}, {-5.7,6.3} };
 	pcl::PointCloud<pcl::PointXYZ>::Ptr cloud = CreateData(points);
 
@@ -136,10 +213,12 @@ int main ()
     	tree->insert(points[i],i); 
 
   	int it = 0;
-  	render2DTree(tree->root,viewer,window, it);
+  	// render2DTree(tree->root,viewer,window, it); // 2D Test
+    render3DTree(tree->root,viewer,window, it); 
   
   	std::cout << "Test Search" << std::endl;
-  	std::vector<int> nearby = tree->search({-6,7},3.0);
+  	// std::vector<int> nearby = tree->search({-6,7},3.0); // 2D test point
+    std::vector<int> nearby = tree->search({-6,7,4},3.0);
   	for(int index : nearby)
       std::cout << index << ",";
   	std::cout << std::endl;
@@ -160,7 +239,7 @@ int main ()
   	{
   		pcl::PointCloud<pcl::PointXYZ>::Ptr clusterCloud(new pcl::PointCloud<pcl::PointXYZ>());
   		for(int indice: cluster)
-  			clusterCloud->points.push_back(pcl::PointXYZ(points[indice][0],points[indice][1],0));
+  			clusterCloud->points.push_back(pcl::PointXYZ(points[indice][0],points[indice][1],points[indice][2]));
   		renderPointCloud(viewer, clusterCloud,"cluster"+std::to_string(clusterId),colors[clusterId%3]);
   		++clusterId;
   	}
